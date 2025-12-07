@@ -90,6 +90,7 @@ public class WorldAppState extends BaseAppState {
             voxelWorld.toggleRenderDebug();
         }
     }
+
     @Override
     protected void cleanup(Application app) {
         if (worldNode != null) {

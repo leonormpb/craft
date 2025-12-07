@@ -12,6 +12,8 @@ import com.jme3.scene.Mesh;
 import com.jme3.scene.Node;
 import com.jme3.texture.Texture2D;
 import jogo.util.ProcTextures;
+import jogo.util.Hit;
+import jogo.fastnoise.FastNoiseLite;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -36,6 +38,9 @@ public class VoxelWorld {
     private final int chunkCountX, chunkCountY, chunkCountZ;
     private final Chunk[][][] chunks;
 
+    // Seed do mundo
+    private static final int WORLD_SEED = 12345;
+
     public VoxelWorld(AssetManager assetManager, int sizeX, int sizeY, int sizeZ) {
         this.assetManager = assetManager;
         this.sizeX = sizeX;
@@ -44,9 +49,9 @@ public class VoxelWorld {
         this.palette = VoxelPalette.defaultPalette();
         // Remove old vox array
         // this.vox = new byte[sizeX][sizeY][sizeZ];
-        this.chunkCountX = (int)Math.ceil(sizeX / (float)chunkSize);
-        this.chunkCountY = (int)Math.ceil(sizeY / (float)chunkSize);
-        this.chunkCountZ = (int)Math.ceil(sizeZ / (float)chunkSize);
+        this.chunkCountX = (int) Math.ceil(sizeX / (float) chunkSize);
+        this.chunkCountY = (int) Math.ceil(sizeY / (float) chunkSize);
+        this.chunkCountZ = (int) Math.ceil(sizeZ / (float) chunkSize);
         this.chunks = new Chunk[chunkCountX][chunkCountY][chunkCountZ];
         for (int cx = 0; cx < chunkCountX; cx++)
             for (int cy = 0; cy < chunkCountY; cy++)
@@ -63,29 +68,39 @@ public class VoxelWorld {
         if (cx < 0 || cy < 0 || cz < 0 || cx >= chunkCountX || cy >= chunkCountY || cz >= chunkCountZ) return null;
         return chunks[cx][cy][cz];
     }
-    private int lx(int x) { return x % chunkSize; }
-    private int ly(int y) { return y % chunkSize; }
-    private int lz(int z) { return z % chunkSize; }
+
+    private int lx(int x) {
+        return x % chunkSize;
+    }
+
+    private int ly(int y) {
+        return y % chunkSize;
+    }
+
+    private int lz(int z) {
+        return z % chunkSize;
+    }
 
     // Block access
     public byte getBlock(int x, int y, int z) {
         Chunk c = getChunk(x, y, z);
         if (c == null) return VoxelPalette.AIR_ID;
-        if (!inBounds(x,y,z)) return VoxelPalette.AIR_ID;
+        if (!inBounds(x, y, z)) return VoxelPalette.AIR_ID;
         return c.get(lx(x), ly(y), lz(z));
     }
+
     public void setBlock(int x, int y, int z, byte id) {
         Chunk c = getChunk(x, y, z);
         if (c != null) {
             c.set(lx(x), ly(y), lz(z), id);
             c.markDirty();
             // If on chunk edge, mark neighbor dirty
-            if (lx(x) == 0) markNeighborChunkDirty(x-1, y, z);
-            if (lx(x) == chunkSize-1) markNeighborChunkDirty(x+1, y, z);
-            if (ly(y) == 0) markNeighborChunkDirty(x, y-1, z);
-            if (ly(y) == chunkSize-1) markNeighborChunkDirty(x, y+1, z);
-            if (lz(z) == 0) markNeighborChunkDirty(x, y, z-1);
-            if (lz(z) == chunkSize-1) markNeighborChunkDirty(x, y, z+1);
+            if (lx(x) == 0) markNeighborChunkDirty(x - 1, y, z);
+            if (lx(x) == chunkSize - 1) markNeighborChunkDirty(x + 1, y, z);
+            if (ly(y) == 0) markNeighborChunkDirty(x, y - 1, z);
+            if (ly(y) == chunkSize - 1) markNeighborChunkDirty(x, y + 1, z);
+            if (lz(z) == 0) markNeighborChunkDirty(x, y, z - 1);
+            if (lz(z) == chunkSize - 1) markNeighborChunkDirty(x, y, z + 1);
         }
     }
 
@@ -95,19 +110,15 @@ public class VoxelWorld {
     }
 
     public boolean breakAt(int x, int y, int z) {
-        if (!inBounds(x,y,z)) return false;
+        if (!inBounds(x, y, z)) return false;
         setBlock(x, y, z, VoxelPalette.AIR_ID);
         return true;
     }
 
-    public Node getNode() { return node; }
-
-    //TODO this is where you'll generate your world
-    public void generateLayers() {
-        //generate a SINGLE block under the player:
-        Vector3i pos = new Vector3i(getRecommendedSpawn());
-        setBlock(pos.x, pos.y, pos.z, VoxelPalette.STONE_ID);
+    public Node getNode() {
+        return node;
     }
+
 
     public int getTopSolidY(int x, int z) {
         if (x < 0 || z < 0 || x >= sizeX || z >= sizeZ) return -1;
@@ -201,44 +212,52 @@ public class VoxelWorld {
 
         float t = 0f;
         // starting inside a solid block
-        if (inBounds(x,y,z) && isSolid(x,y,z)) {
-            return Optional.of(new Hit(new Vector3i(x,y,z), new Vector3f(0,0,0), 0f));
+        if (inBounds(x, y, z) && isSolid(x, y, z)) {
+            return Optional.of(new Hit(new Vector3i(x, y, z), new Vector3f(0, 0, 0), 0f));
         }
 
-        Vector3f lastNormal = new Vector3f(0,0,0);
+        Vector3f lastNormal = new Vector3f(0, 0, 0);
 
         while (t <= maxDistance) {
             if (tMaxX < tMaxY) {
                 if (tMaxX < tMaxZ) {
-                    x += stepX; t = tMaxX; tMaxX += tDeltaX;
+                    x += stepX;
+                    t = tMaxX;
+                    tMaxX += tDeltaX;
                     lastNormal.set(-stepX, 0, 0);
                 } else {
-                    z += stepZ; t = tMaxZ; tMaxZ += tDeltaZ;
+                    z += stepZ;
+                    t = tMaxZ;
+                    tMaxZ += tDeltaZ;
                     lastNormal.set(0, 0, -stepZ);
                 }
             } else {
                 if (tMaxY < tMaxZ) {
-                    y += stepY; t = tMaxY; tMaxY += tDeltaY;
+                    y += stepY;
+                    t = tMaxY;
+                    tMaxY += tDeltaY;
                     lastNormal.set(0, -stepY, 0);
                 } else {
-                    z += stepZ; t = tMaxZ; tMaxZ += tDeltaZ;
+                    z += stepZ;
+                    t = tMaxZ;
+                    tMaxZ += tDeltaZ;
                     lastNormal.set(0, 0, -stepZ);
                 }
             }
 
-            if (!inBounds(x,y,z)) {
+            if (!inBounds(x, y, z)) {
                 if (t > maxDistance) break;
                 continue;
             }
-            if (isSolid(x,y,z)) {
-                return Optional.of(new Hit(new Vector3i(x,y,z), lastNormal.clone(), t));
+            if (isSolid(x, y, z)) {
+                return Optional.of(new Hit(new Vector3i(x, y, z), lastNormal.clone(), t));
             }
         }
         return Optional.empty();
     }
 
     private boolean isSolid(int x, int y, int z) {
-        if (!inBounds(x,y,z)) return false;
+        if (!inBounds(x, y, z)) return false;
         return palette.get(getBlock(x, y, z)).isSolid();
     }
 
@@ -285,9 +304,17 @@ public class VoxelWorld {
         for (Geometry g : geoms.values()) applyRenderFlags(g.getMaterial());
     }
 
-    public boolean isLit() { return lit; }
-    public boolean isWireframe() { return wireframe; }
-    public boolean isCulling() { return culling; }
+    public boolean isLit() {
+        return lit;
+    }
+
+    public boolean isWireframe() {
+        return wireframe;
+    }
+
+    public boolean isCulling() {
+        return culling;
+    }
 
     public void toggleRenderDebug() {
         System.out.println("Toggled render debug");
@@ -296,7 +323,9 @@ public class VoxelWorld {
         setCulling(!isCulling());
     }
 
-    public int getGroundHeight() { return groundHeight; }
+    public int getGroundHeight() {
+        return groundHeight;
+    }
 
     public VoxelPalette getPalette() {
         return palette;
@@ -341,7 +370,12 @@ public class VoxelWorld {
     // simple int3
     public static class Vector3i {
         public final int x, y, z;
-        public Vector3i(int x, int y, int z) { this.x=x; this.y=y; this.z=z; }
+
+        public Vector3i(int x, int y, int z) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
 
         public Vector3i(Vector3f vec3f) {
             this.x = (int) vec3f.x;
@@ -349,4 +383,86 @@ public class VoxelWorld {
             this.z = (int) vec3f.z;
         }
     }
+
+    public void generateLayers() {
+
+
+        FastNoiseLite noise = new FastNoiseLite(WORLD_SEED);
+        noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+        noise.SetFrequency(0.015f);  // controla o nível de detalhe
+
+        for (int x = 0; x < sizeX; x++) {
+            for (int z = 0; z < sizeZ; z++) {
+
+                // Altura gerada por ruído
+                float n = noise.GetNoise(x, z);          // -1 a 1
+                float normalized = (n + 1f) * 0.5f;      // 0 a 1
+                int height = (int) (normalized * 20) + 20; // altura base (20–60)
+
+                if (height >= sizeY) height = sizeY - 2;
+
+                // 1 — camada de pedra (fundos)
+                for (int y = 0; y < height - 4; y++) {
+                    setBlock(x, y, z, VoxelPalette.STONE_ID);
+                }
+
+                // 2 — camadas de dirt
+                for (int y = height - 4; y < height; y++) {
+                    if (y >= 0)
+                        setBlock(x, y, z, VoxelPalette.DIRT_ID);
+                }
+
+                // 3 — superfície
+                setBlock(x, height, z, VoxelPalette.SAND_ID);
+                setBlock(x, height - 4, z, VoxelPalette.DIRT_ID);
+
+                // 4 — o resto ar
+                for (int y = height + 1; y < sizeY; y++) {
+                    setBlock(x, y, z, VoxelPalette.AIR_ID);
+
+                    // 🌳 colocar uma árvore aleatória
+                if (Math.random() < 0.02) {
+                    placeTree(x, z);
+                }
+            }
+
+
+
+            // descobre altura do terreno neste x,z
+            int baseY = getTopSolidY(x, z);
+            if (baseY < 0) return; // fora do mapa ou erro
+
+            // não põe árvores em areia
+            byte topBlock = getBlock(x, baseY, z);
+            if (topBlock == VoxelPalette.SAND_ID) return;
+
+            // altura do tronco
+            int trunkHeight = 4 + (int) (Math.random() * 3); // 4 a 6 blocos
+
+            // tronco
+            for (int y = 1; y <= trunkHeight; y++) {
+                setBlock(x, baseY + y, z, VoxelPalette.WOOD_ID);
+            }
+
+            int topY = baseY + trunkHeight;
+
+            // copa da árvore (folhas)
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    for (int dy = -1; dy <= 2; dy++) {
+
+                        // dá forma arredondada
+                        if (Math.abs(dx) + Math.abs(dz) + Math.abs(dy) > 4) continue;
+
+                        int fx = x + dx;
+                        int fy = topY + dy;
+                        int fz = z + dz;
+
+                        if (inBounds(fx, fy, fz) && getBlock(fx, fy, fz) == VoxelPalette.AIR_ID) {
+                            setBlock(fx, fy, fz, VoxelPalette.LEAVES_ID);
+                        }
+                    }
+                }
+            }
+
 }
