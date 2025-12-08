@@ -60,7 +60,7 @@ public class InteractionAppState extends BaseAppState {
         VoxelWorld vw = world != null ? world.getVoxelWorld() : null;
         if (vw != null) {
             vw.pickFirstSolid(cam, reach).ifPresent(hit -> {
-                VoxelWorld.Vector3i cell = hit.cell;  // ✅ Já está correto
+                VoxelWorld.Vector3i cell = hit.cell;
                 System.out.println("TODO (exercise): interact with voxel at " + cell.x + "," + cell.y + "," + cell.z);
             });
         }
