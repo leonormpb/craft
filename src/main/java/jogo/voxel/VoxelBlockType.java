@@ -30,4 +30,9 @@ public abstract class VoxelBlockType {
     public Material getMaterial(AssetManager assetManager, jogo.framework.math.Vec3 blockPos) {
         return getMaterial(assetManager);
     }
+
+    // Em VoxelBlockType.java
+    public float getSpeedModifier() {
+        return 1.0f; // Velocidade normal (100%)
+    }
 }

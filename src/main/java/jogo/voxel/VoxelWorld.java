@@ -106,9 +106,32 @@ public class VoxelWorld {
 
     //TODO this is where you'll generate your world
     public void generateLayers() {
-        //generate a SINGLE block under the player:
-        Vector3i pos = new Vector3i(getRecommendedSpawn());
-        setBlock(pos.x, pos.y, pos.z, VoxelPalette.STONE_ID);
+
+        int yGround = groundHeight;
+
+        for (int x = 0; x < sizeX; x++) {
+            for (int z = 0; z < sizeZ; z++) {
+
+                // Itera desde a base (0) até à altura do chão (yGround)
+                for (int y = 0; y <= yGround; y++) {
+
+                    if (y == yGround) {
+                        // Camada de topo (Superfície)
+                        setBlock(x, y, z, VoxelPalette.GRASS_ID);
+
+                    } else if (y >= yGround - 2) {
+                        // As 2 camadas imediatamente abaixo da superfície (yGround-1 e yGround-2)
+                        setBlock(x, y, z, VoxelPalette.DIRT_ID);
+
+                    } else {
+                        // Tudo o que resta abaixo é terra
+                        setBlock(x, y, z, VoxelPalette.STONE_ID);
+                    }
+                }
+            }
+        }
+
+
     }
 
     public int getTopSolidY(int x, int z) {

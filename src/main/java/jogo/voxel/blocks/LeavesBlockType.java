@@ -9,13 +9,13 @@ import jogo.voxel.VoxelBlockType;
 
 public class LeavesBlockType extends VoxelBlockType {
     public LeavesBlockType() {
-        super("sand");
+        super("leaves");
     }
     // isSolid() inherits true from base
 
     @Override
     public Material getMaterial(AssetManager assetManager) {
-        Texture2D tex = ProcTextures.checker(128, 4, ColorRGBA.Pink, ColorRGBA.Pink);
+        Texture2D tex = ProcTextures.checker(128, 4, ColorRGBA.Green, ColorRGBA.Green);
         Material m = new Material(assetManager, "Common/MatDefs/Light/Lighting.j3md");
         m.setTexture("DiffuseMap", tex);
         m.setBoolean("UseMaterialColors", true);

@@ -8,9 +8,9 @@ import jogo.util.ProcTextures;
 import jogo.voxel.VoxelBlockType;
 import com.jme3.texture.Texture;
 
-public class DirtBlockType extends VoxelBlockType {
-    public DirtBlockType() {
-        super("dirt");
+public class GrassBlockType extends VoxelBlockType {
+    public GrassBlockType() {
+        super("grass");
     }
     // isSolid() inherits true from base
 
@@ -18,7 +18,7 @@ public class DirtBlockType extends VoxelBlockType {
     public Material getMaterial(AssetManager assetManager) {
         // 1. Carregar a textura do ficheiro
         // O caminho é relativo à pasta 'resources'
-        Texture2D tex = (Texture2D) assetManager.loadTexture("Textures/dirt.png");
+        Texture2D tex = (Texture2D) assetManager.loadTexture("Textures/grass.png");
 
         // 2. FILTRAGEM (Muito Importante para o estilo Voxel/Minecraft)
         // Isto faz com que os pixéis fiquem nítidos em vez de borrados quando te aproximas
