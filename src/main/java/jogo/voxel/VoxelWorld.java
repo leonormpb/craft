@@ -13,6 +13,22 @@ import com.jme3.scene.Node;
 import com.jme3.texture.Texture2D;
 import jogo.util.ProcTextures;
 import jogo.util.Hit;
+import java.util.Random;
+import java.util.List;
+import java.util.ArrayList;
+import jogo.voxel.generation.TreeGenerator;
+import jogo.voxel.generation.Tree;
+import jogo.voxel.generation.FlowerGenerator;
+
+import com.jme3.scene.shape.Quad;
+import com.jme3.math.Quaternion;
+import com.jme3.math.FastMath;
+import com.jme3.renderer.queue.RenderQueue;
+import com.jme3.texture.Texture;
+
+import com.jme3.scene.shape.Box;
+import jogo.gameobject.Flower;
+
 
 import java.util.HashMap;
 import java.util.Map;
@@ -37,6 +53,14 @@ public class VoxelWorld {
     private final int chunkCountX, chunkCountY, chunkCountZ;
     private final Chunk[][][] chunks;
 
+    private final long WORLD_SEED = 12345L;
+    private List<int[]> arvoresParaPlantar = new ArrayList<>();
+    private TreeGenerator treeGenerator;
+    private FlowerGenerator flowerGenerator;
+
+    private List<Flower> plantedFlowers = new ArrayList<>();
+
+
     public VoxelWorld(AssetManager assetManager, int sizeX, int sizeY, int sizeZ) {
         this.assetManager = assetManager;
         this.sizeX = sizeX;
@@ -45,9 +69,9 @@ public class VoxelWorld {
         this.palette = VoxelPalette.defaultPalette();
         // Remove old vox array
         // this.vox = new byte[sizeX][sizeY][sizeZ];
-        this.chunkCountX = (int)Math.ceil(sizeX / (float)chunkSize);
-        this.chunkCountY = (int)Math.ceil(sizeY / (float)chunkSize);
-        this.chunkCountZ = (int)Math.ceil(sizeZ / (float)chunkSize);
+        this.chunkCountX = (int) Math.ceil(sizeX / (float) chunkSize);
+        this.chunkCountY = (int) Math.ceil(sizeY / (float) chunkSize);
+        this.chunkCountZ = (int) Math.ceil(sizeZ / (float) chunkSize);
         this.chunks = new Chunk[chunkCountX][chunkCountY][chunkCountZ];
         for (int cx = 0; cx < chunkCountX; cx++)
             for (int cy = 0; cy < chunkCountY; cy++)
@@ -64,15 +88,24 @@ public class VoxelWorld {
         if (cx < 0 || cy < 0 || cz < 0 || cx >= chunkCountX || cy >= chunkCountY || cz >= chunkCountZ) return null;
         return chunks[cx][cy][cz];
     }
-    private int lx(int x) { return x % chunkSize; }
-    private int ly(int y) { return y % chunkSize; }
-    private int lz(int z) { return z % chunkSize; }
+
+    private int lx(int x) {
+        return x % chunkSize;
+    }
+
+    private int ly(int y) {
+        return y % chunkSize;
+    }
+
+    private int lz(int z) {
+        return z % chunkSize;
+    }
 
     // Block access
     public byte getBlock(int x, int y, int z) {
         Chunk c = getChunk(x, y, z);
         if (c == null) return VoxelPalette.AIR_ID;
-        if (!inBounds(x,y,z)) return VoxelPalette.AIR_ID;
+        if (!inBounds(x, y, z)) return VoxelPalette.AIR_ID;
         return c.get(lx(x), ly(y), lz(z));
     }
 
@@ -82,12 +115,12 @@ public class VoxelWorld {
             c.set(lx(x), ly(y), lz(z), id);
             c.markDirty();
             // If on chunk edge, mark neighbor dirty
-            if (lx(x) == 0) markNeighborChunkDirty(x-1, y, z);
-            if (lx(x) == chunkSize-1) markNeighborChunkDirty(x+1, y, z);
-            if (ly(y) == 0) markNeighborChunkDirty(x, y-1, z);
-            if (ly(y) == chunkSize-1) markNeighborChunkDirty(x, y+1, z);
-            if (lz(z) == 0) markNeighborChunkDirty(x, y, z-1);
-            if (lz(z) == chunkSize-1) markNeighborChunkDirty(x, y, z+1);
+            if (lx(x) == 0) markNeighborChunkDirty(x - 1, y, z);
+            if (lx(x) == chunkSize - 1) markNeighborChunkDirty(x + 1, y, z);
+            if (ly(y) == 0) markNeighborChunkDirty(x, y - 1, z);
+            if (ly(y) == chunkSize - 1) markNeighborChunkDirty(x, y + 1, z);
+            if (lz(z) == 0) markNeighborChunkDirty(x, y, z - 1);
+            if (lz(z) == chunkSize - 1) markNeighborChunkDirty(x, y, z + 1);
         }
     }
 
@@ -97,42 +130,194 @@ public class VoxelWorld {
     }
 
     public boolean breakAt(int x, int y, int z) {
-        if (!inBounds(x,y,z)) return false;
+        if (!inBounds(x, y, z)) return false;
         setBlock(x, y, z, VoxelPalette.AIR_ID);
         return true;
     }
 
-    public Node getNode() { return node; }
+    public Node getNode() {
+        return node;
+    }
 
     //TODO this is where you'll generate your world
-    public void generateLayers() {
 
-        int yGround = groundHeight;
+
+    public void generateLayers() {
+        System.out.println("🌍 1. A gerar Terreno (Estilo Minecraft)...");
+        generateTerrain(); // PASSO 1
+
+        System.out.println("🌳 2. A plantar Árvores...");
+        generateTrees();   // PASSO 2
+
+        System.out.println("🌸 3. A gerar Flores...");
+        generateFlowersObjects(); // Só cria Flower objects, guarda em plantedFlowers
+    }
+
+
+    private void generateFlowersObjects() {
+        FlowerGenerator flowerGen = new FlowerGenerator(this, WORLD_SEED);
+        flowerGen.generateFlowers(sizeX, sizeZ);
+        this.plantedFlowers = flowerGen.getPlantedFlowers(); // ✅ Guarda
+    }
+
+
+    private void generateTerrain() {
+        Random random = new Random(WORLD_SEED);
 
         for (int x = 0; x < sizeX; x++) {
             for (int z = 0; z < sizeZ; z++) {
 
-                // Itera desde a base (0) até à altura do chão (yGround)
-                for (int y = 0; y <= yGround; y++) {
+                // --- 1. CÁLCULO DA ALTURA ---
 
-                    if (y == yGround) {
-                        // Camada de topo (Superfície)
-                        setBlock(x, y, z, VoxelPalette.GRASS_ID);
+                // Reduzi a frequência de 0.08 para 0.04.
+                // Isto faz as montanhas serem mais largas e menos "agulhas",
+                // permitindo que a relva cubra tudo sem deixar pedra à mostra de lado.
 
-                    } else if (y >= yGround - 2) {
-                        // As 2 camadas imediatamente abaixo da superfície (yGround-1 e yGround-2)
+                double biomaNoise = Math.sin(x * 0.03) + Math.cos(z * 0.03);
+                double detalhe = (random.nextDouble() * 0.5);
+
+                int alturaFinal;
+
+                if (biomaNoise > 0.3) {
+                    // Montanha: Mais suave e larga
+                    double pico = Math.abs(Math.sin(x * 0.04) + Math.cos(z * 0.04));
+                    alturaFinal = groundHeight + 8 + (int) (pico * 20 + detalhe);
+                } else {
+                    // Planície
+                    double suave = Math.sin(x * 0.05) + Math.cos(z * 0.05);
+                    alturaFinal = groundHeight + (int) (suave * 4 + detalhe);
+                }
+
+                // Limites
+                if (alturaFinal < 2) alturaFinal = 2;
+                if (alturaFinal >= sizeY - 7) alturaFinal = sizeY - 7;
+
+                // --- 2. PINTAR OS BLOCOS ---
+
+                for (int y = 0; y < sizeY; y++) {
+
+                    if (y > alturaFinal) {
+                        setBlock(x, y, z, VoxelPalette.AIR_ID);
+                    } else if (y == alturaFinal) {
+                        // Topo: Relva (ou Neve se for muito, muito alto)
+                        if (alturaFinal > groundHeight + 22) {
+                            setBlock(x, y, z, VoxelPalette.GRASS_ID);
+                        } else {
+                            setBlock(x, y, z, VoxelPalette.GRASS_ID);
+                        }
+                    } else if (y >= alturaFinal - 5) {
+                        // --- ALTERAÇÃO AQUI ---
+                        // Aumentei a profundidade da terra para 5 camadas.
+                        // Assim, mesmo nas encostas, vês terra e não a pedra de dentro.
                         setBlock(x, y, z, VoxelPalette.DIRT_ID);
-
                     } else {
-                        // Tudo o que resta abaixo é terra
+                        // Núcleo da montanha: Pedra
                         setBlock(x, y, z, VoxelPalette.STONE_ID);
                     }
                 }
             }
         }
 
+    }
+
+    // O método generateTrees mantém-se igual ao passo anterior (o que funciona bem)
+    // PASSO 2: Percorrer o mundo já criado e meter árvores
+    // PASSO 2: Percorrer o mundo já criado e meter árvores
+    private void generateTrees() {
+        Random random = new Random(WORLD_SEED); // Seed igual para reproduzir
+
+        for (int x = 0; x < sizeX; x++) {
+            for (int z = 0; z < sizeZ; z++) {
+
+                // Em vez de recalcular a matemática, procuramos onde está a relva
+                // Vamos de cima para baixo até achar o chão
+                int ySuperficie = getHighestBlockY(x, z);
+
+                // Se não encontrarmos chão válido ou não for relva, passa à frente
+                if (ySuperficie == -1) continue;
+                if (getBlock(x, ySuperficie, z) != VoxelPalette.GRASS_ID) continue;
+
+                // --- LÓGICA DE PLANTAÇÃO ---
+
+                // Margem de 4 blocos para as folhas não saírem do mapa
+                boolean margemSegura = (x > 3) && (x < sizeX - 4) && (z > 3) && (z < sizeZ - 4);
+
+                if (margemSegura) {
+                    // Verifica se já existe madeira por perto (raio 5)
+                    if (!temArvorePerto(x, z, ySuperficie, 5)) {
+                        // 5% de chance
+                        if (random.nextFloat() < 0.05f) {
+                            placeTree(x, z, ySuperficie);
+                        }
+                    }
+                }
+            }
+        }
 
     }
+
+
+    // --- MÉTODOS AUXILIARES ---
+
+    private int getHighestBlockY(int x, int z) {
+        for (int y = sizeY - 1; y >= 0; y--) {
+            byte b = getBlock(x, y, z);
+            // Ignora ar, madeira e folhas (caso estejamos a verificar de novo)
+            if (b != VoxelPalette.AIR_ID && b != VoxelPalette.LEAVES_ID && b != VoxelPalette.WOOD_ID) {
+                return y;
+            }
+        }
+        return -1;
+    }
+
+    private boolean temArvorePerto(int x, int z, int y, int raio) {
+        for (int i = x - raio; i <= x + raio; i++) {
+            for (int j = z - raio; j <= z + raio; j++) {
+                if (isInside(i, y + 1, j)) { // Verifica madeira logo acima do chão
+                    if (getBlock(i, y + 1, j) == VoxelPalette.WOOD_ID) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private void placeTree(int x, int z, int yBase) {
+        int treeHeight = 5;
+
+        // TRONCO
+        for (int i = 1; i <= treeHeight; i++) {
+            setBlock(x, yBase + i, z, VoxelPalette.WOOD_ID);
+        }
+
+        // FOLHAS (Quadradas e completas)
+        int leavesStart = yBase + 3;
+        int leavesEnd = yBase + treeHeight + 1;
+
+        for (int ly = leavesStart; ly <= leavesEnd; ly++) {
+            int radius = (ly < yBase + 5) ? 2 : 1; // 2 em baixo, 1 em cima
+
+            for (int lx = x - radius; lx <= x + radius; lx++) {
+                for (int lz = z - radius; lz <= z + radius; lz++) {
+                    if (!isInside(lx, ly, lz)) continue;
+
+                    // Não apaga o tronco
+                    if (lx == x && lz == z && ly <= yBase + treeHeight) continue;
+
+                    // Só mete folha se for AR (não estraga montanha nem outras árvores)
+                    if (getBlock(lx, ly, lz) == VoxelPalette.AIR_ID) {
+                        setBlock(lx, ly, lz, VoxelPalette.LEAVES_ID);
+                    }
+                }
+            }
+        }
+    }
+
+    private boolean isInside(int x, int y, int z) {
+        return x >= 0 && x < sizeX && y >= 0 && y < sizeY && z >= 0 && z < sizeZ;
+    }
+
 
     public int getTopSolidY(int x, int z) {
         if (x < 0 || z < 0 || x >= sizeX || z >= sizeZ) return -1;
@@ -185,6 +370,7 @@ public class VoxelWorld {
         }
     }
 
+
     public void buildPhysics(PhysicsSpace space) {
         // Build per-chunk static rigid bodies instead of a single world body
         if (space == null) return;
@@ -226,44 +412,52 @@ public class VoxelWorld {
 
         float t = 0f;
         // starting inside a solid block
-        if (inBounds(x,y,z) && isSolid(x,y,z)) {
-            return Optional.of(new Hit(new Vector3i(x,y,z), new Vector3f(0,0,0), 0f));
+        if (inBounds(x, y, z) && isSolid(x, y, z)) {
+            return Optional.of(new Hit(new Vector3i(x, y, z), new Vector3f(0, 0, 0), 0f));
         }
 
-        Vector3f lastNormal = new Vector3f(0,0,0);
+        Vector3f lastNormal = new Vector3f(0, 0, 0);
 
         while (t <= maxDistance) {
             if (tMaxX < tMaxY) {
                 if (tMaxX < tMaxZ) {
-                    x += stepX; t = tMaxX; tMaxX += tDeltaX;
+                    x += stepX;
+                    t = tMaxX;
+                    tMaxX += tDeltaX;
                     lastNormal.set(-stepX, 0, 0);
                 } else {
-                    z += stepZ; t = tMaxZ; tMaxZ += tDeltaZ;
+                    z += stepZ;
+                    t = tMaxZ;
+                    tMaxZ += tDeltaZ;
                     lastNormal.set(0, 0, -stepZ);
                 }
             } else {
                 if (tMaxY < tMaxZ) {
-                    y += stepY; t = tMaxY; tMaxY += tDeltaY;
+                    y += stepY;
+                    t = tMaxY;
+                    tMaxY += tDeltaY;
                     lastNormal.set(0, -stepY, 0);
                 } else {
-                    z += stepZ; t = tMaxZ; tMaxZ += tDeltaZ;
+                    z += stepZ;
+                    t = tMaxZ;
+                    tMaxZ += tDeltaZ;
                     lastNormal.set(0, 0, -stepZ);
                 }
             }
 
-            if (!inBounds(x,y,z)) {
+            if (!inBounds(x, y, z)) {
                 if (t > maxDistance) break;
                 continue;
             }
-            if (isSolid(x,y,z)) {
-                return Optional.of(new Hit(new Vector3i(x,y,z), lastNormal.clone(), t));
+            if (isSolid(x, y, z)) {
+                return Optional.of(new Hit(new Vector3i(x, y, z), lastNormal.clone(), t));
             }
         }
         return Optional.empty();
     }
 
     private boolean isSolid(int x, int y, int z) {
-        if (!inBounds(x,y,z)) return false;
+        if (!inBounds(x, y, z)) return false;
         return palette.get(getBlock(x, y, z)).isSolid();
     }
 
@@ -310,9 +504,17 @@ public class VoxelWorld {
         for (Geometry g : geoms.values()) applyRenderFlags(g.getMaterial());
     }
 
-    public boolean isLit() { return lit; }
-    public boolean isWireframe() { return wireframe; }
-    public boolean isCulling() { return culling; }
+    public boolean isLit() {
+        return lit;
+    }
+
+    public boolean isWireframe() {
+        return wireframe;
+    }
+
+    public boolean isCulling() {
+        return culling;
+    }
 
     public void toggleRenderDebug() {
         System.out.println("Toggled render debug");
@@ -321,7 +523,9 @@ public class VoxelWorld {
         setCulling(!isCulling());
     }
 
-    public int getGroundHeight() { return groundHeight; }
+    public int getGroundHeight() {
+        return groundHeight;
+    }
 
     public VoxelPalette getPalette() {
         return palette;
@@ -366,7 +570,12 @@ public class VoxelWorld {
     // simple int3
     public static class Vector3i {
         public final int x, y, z;
-        public Vector3i(int x, int y, int z) { this.x=x; this.y=y; this.z=z; }
+
+        public Vector3i(int x, int y, int z) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
 
         public Vector3i(Vector3f vec3f) {
             this.x = (int) vec3f.x;
@@ -374,4 +583,79 @@ public class VoxelWorld {
             this.z = (int) vec3f.z;
         }
     }
+
+    // Novo método público (adiciona isto no final da classe)
+    public void renderFlowers() {
+        // 1. Instanciar e Gerar Lógica
+        FlowerGenerator flowerGen = new FlowerGenerator(this, WORLD_SEED);
+        flowerGen.generateFlowers(sizeX, sizeZ);
+
+        // Obter a lista de flores geradas
+        List<Flower> flores = flowerGen.getPlantedFlowers();
+
+        System.out.println("🌸 A renderizar " + flores.size() + " flores com textura...");
+
+        // 2. Configurar Material
+        Material mat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+
+        // --- TENTAR CARREGAR A TEXTURA ---
+        try {
+            // Tenta carregar a imagem 'flores.png' da pasta resources/Textures
+            Texture tex = assetManager.loadTexture("Textures/flores.png");
+            mat.setTexture("ColorMap", tex);
+
+            // Filtro Nearest para ficar pixelado (estilo retro/Minecraft)
+
+            // 1. Quando estás PERTO (Magnification) -> Usa MagFilter
+            tex.setMagFilter(Texture.MagFilter.Nearest);
+
+            // 2. Quando estás LONGE (Minification) -> Usa MinFilter (CORRIGIDO AQUI)
+            tex.setMinFilter(Texture.MinFilter.NearestNoMipMaps);
+
+        } catch (Exception e) {
+            System.out.println("⚠️ ERRO: Não encontrei 'Textures/flores.png'. A usar cor rosa.");
+            mat.setColor("Color", ColorRGBA.Pink);
+        }
+
+
+        // Configurações de Transparência (ESSENCIAIS para o PNG funcionar)
+        mat.getAdditionalRenderState().setFaceCullMode(RenderState.FaceCullMode.Off); // Ver dos 2 lados
+        mat.getAdditionalRenderState().setBlendMode(RenderState.BlendMode.Alpha);     // Recortar o fundo transparente
+
+        // 3. Criar a geometria para cada flor
+        for (Flower f : flores) {
+
+            Node flowerNode = new Node(f.getName());
+            float width = 0.6f;
+            float height = 0.6f;
+
+            // --- PLACA 1 ( / ) ---
+            Quad quad1 = new Quad(width, height);
+            Geometry geom1 = new Geometry("Quad1", quad1);
+            geom1.setMaterial(mat);
+            geom1.setLocalTranslation(-width / 2, 0, 0);
+            geom1.setLocalRotation(new Quaternion().fromAngleAxis(FastMath.QUARTER_PI, Vector3f.UNIT_Y)); // 45 graus
+
+            // --- PLACA 2 ( \ ) ---
+            Quad quad2 = new Quad(width, height);
+            Geometry geom2 = new Geometry("Quad2", quad2);
+            geom2.setMaterial(mat);
+            geom2.setLocalTranslation(-width / 2, 0, 0);
+            geom2.setLocalRotation(new Quaternion().fromAngleAxis(-FastMath.QUARTER_PI, Vector3f.UNIT_Y)); // -45 graus
+
+            // Adicionar placas ao nó
+            flowerNode.attachChild(geom1);
+            flowerNode.attachChild(geom2);
+
+            // 4. Posicionar no Mundo
+            // Centrado no bloco (+0.5) e logo acima do chão (+1.01 para não piscar texturas)
+            flowerNode.setLocalTranslation(f.getX() + 0.5f, f.getY() + 1.01f, f.getZ() + 0.5f);
+
+            // Colocar na fila transparente (importante para não haver bugs visuais com a relva)
+            flowerNode.setQueueBucket(RenderQueue.Bucket.Transparent);
+
+            node.attachChild(flowerNode);
+        }
+    }
 }
+

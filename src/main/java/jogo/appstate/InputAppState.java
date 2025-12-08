@@ -50,8 +50,16 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
         // Interact (E)
         im.addMapping("Interact", new KeyTrigger(KeyInput.KEY_E));
 
+
+        // Inventário
+        im.addMapping("Inventory", new KeyTrigger(KeyInput.KEY_I));
+
         im.addListener(this, "MoveForward", "MoveBackward", "MoveLeft", "MoveRight", "Jump", "Sprint", "ToggleMouse", "Break", "ToggleShading", "Respawn", "Interact");
         im.addListener(this, "MouseX+", "MouseX-", "MouseY+", "MouseY-");
+
+        // Inventário
+        im.addListener(this, "Inventory");
+
     }
 
     @Override
@@ -108,6 +116,11 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
             }
             case "Interact" -> {
                 if (isPressed && mouseCaptured) interactRequested = true;
+            }
+
+            case "Inventory" -> {}
+                if (name.equals("Inventory") && isPressed) {
+                    showInventoryRequested = true;
             }
         }
     }

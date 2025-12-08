@@ -59,6 +59,9 @@ public class WorldAppState extends BaseAppState {
         voxelWorld.generateLayers();
         voxelWorld.buildMeshes();
         voxelWorld.clearAllDirtyFlags();
+
+        voxelWorld.renderFlowers();  // ✅ ADICIONA ISTO - Renderiza as flores DEPOIS
+
         worldNode.attachChild(voxelWorld.getNode());
         voxelWorld.buildPhysics(physicsSpace);
 
