@@ -11,7 +11,13 @@ import com.jme3.math.ColorRGBA;
 import com.jme3.math.Vector3f;
 import com.jme3.renderer.Camera;
 import com.jme3.scene.Node;
+import jogo.gameobject.GameObject;
+import jogo.gameobject.character.Ally;
+import jogo.gameobject.character.Player;
 import jogo.voxel.VoxelWorld;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class WorldAppState extends BaseAppState {
 
@@ -27,12 +33,16 @@ public class WorldAppState extends BaseAppState {
     private VoxelWorld voxelWorld;
     private com.jme3.math.Vector3f spawnPosition;
 
+    // ✅ ADICIONADO: Lista de objetos do mundo (GameObjects)
+    private List<GameObject> worldObjects;
+
     public WorldAppState(Node rootNode, AssetManager assetManager, PhysicsSpace physicsSpace, Camera cam, InputAppState input) {
         this.rootNode = rootNode;
         this.assetManager = assetManager;
         this.physicsSpace = physicsSpace;
         this.cam = cam;
         this.input = input;
+        this.worldObjects = new ArrayList<>();  // ✅ Inicializar a lista
     }
 
     public void registerPlayerAppState(PlayerAppState playerAppState) {
@@ -46,21 +56,20 @@ public class WorldAppState extends BaseAppState {
 
         // Lighting
         AmbientLight ambient = new AmbientLight();
-        ambient.setColor(ColorRGBA.White.mult(0.20f)); // slightly increased ambient
+        ambient.setColor(ColorRGBA.White.mult(0.20f));
         worldNode.addLight(ambient);
 
         DirectionalLight sun = new DirectionalLight();
-        sun.setDirection(new Vector3f(-0.35f, -1.3f, -0.25f).normalizeLocal()); // more top-down to reduce harsh contrast
-        sun.setColor(ColorRGBA.White.mult(0.85f)); // slightly dimmer sun
+        sun.setDirection(new Vector3f(-0.35f, -1.3f, -0.25f).normalizeLocal());
+        sun.setColor(ColorRGBA.White.mult(0.85f));
         worldNode.addLight(sun);
 
-        // Voxel world 16x16x16 (reduced size for simplicity)
+        // Voxel world
         voxelWorld = new VoxelWorld(assetManager, 320, 32, 320);
         voxelWorld.generateLayers();
         voxelWorld.buildMeshes();
         voxelWorld.clearAllDirtyFlags();
-
-        voxelWorld.renderFlowers();  // ✅ ADICIONA ISTO - Renderiza as flores DEPOIS
+        voxelWorld.renderFlowers();
 
         worldNode.attachChild(voxelWorld.getNode());
         voxelWorld.buildPhysics(physicsSpace);
@@ -92,12 +101,14 @@ public class WorldAppState extends BaseAppState {
         if (input != null && input.consumeToggleShadingRequested()) {
             voxelWorld.toggleRenderDebug();
         }
+
+        // ✅ Atualizar IA dos aliados
+        updateAlliesAI(tpf);
     }
 
     @Override
     protected void cleanup(Application app) {
         if (worldNode != null) {
-            // Remove all physics controls under worldNode
             worldNode.depthFirstTraversal(spatial -> {
                 RigidBodyControl rbc = spatial.getControl(RigidBodyControl.class);
                 if (rbc != null) {
@@ -111,8 +122,101 @@ public class WorldAppState extends BaseAppState {
     }
 
     @Override
-    protected void onEnable() { }
+    protected void onEnable() {
+    }
 
     @Override
-    protected void onDisable() { }
+    protected void onDisable() {
+    }
+
+    /**
+     * Adiciona um objeto ao mundo (ex: Ally, Item, etc).
+     *
+     * @param obj O GameObject a adicionar
+     */
+    public void addGameObject(GameObject obj) {
+        worldObjects.add(obj);
+    }
+
+    /**
+     * Remove um objeto do mundo.
+     *
+     * @param obj O GameObject a remover
+     */
+    public void removeGameObject(GameObject obj) {
+        worldObjects.remove(obj);
+    }
+
+    /**
+     * Atualiza a IA de todos os aliados no mundo.
+     * Chamado a cada frame a partir de update().
+     *
+     * @param tpf Tempo por frame
+     */
+    public void updateAlliesAI(float tpf) {
+        // ✅ CORRIGIDO: Acessar o Player através do PlayerAppState
+        // Como Player é private, precisamos de um getter ou acessar via reflexão
+        // Solução melhor: adicionar um getter no PlayerAppState
+
+        Player player = getPlayerFromAppState();
+
+        if (player == null) {
+            System.err.println("[WorldAppState] Aviso: Player não disponível para IA dos aliados");
+            return;
+        }
+
+        // Atualizar cada aliado
+        for (GameObject obj : worldObjects) {
+            if (obj instanceof Ally) {
+                Ally ally = (Ally) obj;
+                // Executar a estratégia passando o jogador
+                ally.executeStrategy(player, tpf);
+            }
+        }
+    }
+
+
+    /**
+     * Spawna um aliado próximo do jogador.
+     *
+     * @param name   Nome do aliado
+     * @param health Saúde inicial
+     * @param speed  Velocidade
+     */
+    public void spawnAlly(String name, float health, float speed) {
+        // Obter posição do jogador (se disponível)
+        Vector3f spawnPos = spawnPosition.clone();
+
+        // Adicionar offset aleatório
+        float offsetX = (float) (Math.random() * 4 - 2);
+        float offsetZ = (float) (Math.random() * 4 - 2);
+        spawnPos.addLocal(offsetX, 0, offsetZ);
+
+        // Criar aliado com FollowStrategy
+        jogo.gameobject.npc.AIStrategy strategy = new jogo.gameobject.npc.FollowStrategy();
+        Ally newAlly = new Ally(name, health, speed, strategy);
+
+        // Adicionar ao mundo
+        addGameObject(newAlly);
+        System.out.println("[WorldAppState] Aliado '" + name + "' spawned em: " + spawnPos);
+    }
+
+    private Player getPlayerFromAppState() {
+        if (playerAppState == null) {
+            return null;
+        }
+
+        // ✅ OPÇÃO 1: Se você adicionar um getter no PlayerAppState
+        // return playerAppState.getPlayer();
+
+        // ✅ OPÇÃO 2: Usar reflexão (sem modificar PlayerAppState)
+        try {
+            java.lang.reflect.Field playerField = PlayerAppState.class.getDeclaredField("player");
+            playerField.setAccessible(true);
+            return (Player) playerField.get(playerAppState);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            System.err.println("[WorldAppState] Erro ao obter Player via reflexão: " + e.getMessage());
+            return null;
+        }
+    }
 }

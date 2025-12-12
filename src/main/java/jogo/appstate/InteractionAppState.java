@@ -13,7 +13,10 @@ import jogo.gameobject.GameObject;
 import jogo.gameobject.item.Item;
 import jogo.voxel.VoxelWorld;
 
-public class InteractionAppState extends BaseAppState {
+import com.jme3.input.controls.ActionListener;
+
+
+public class InteractionAppState extends BaseAppState implements ActionListener {
 
     private final Node rootNode;
     private final Camera cam;
@@ -84,4 +87,11 @@ public class InteractionAppState extends BaseAppState {
 
     @Override
     protected void onDisable() { }
+
+    @Override
+    public void onAction(String name, boolean isPressed, float tpf) {
+        // Se não precisares de nada aqui, podes deixar vazio
+    }
+
+
 }

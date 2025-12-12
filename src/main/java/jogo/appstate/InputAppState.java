@@ -21,8 +21,16 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
     private volatile boolean toggleShadingRequested;
     private volatile boolean respawnRequested;
     private volatile boolean interactRequested;
+
+
+    // Inventário
+    private volatile boolean showInventoryRequested;
+
     private float mouseDX, mouseDY;
     private boolean mouseCaptured = true;
+
+
+
 
     @Override
     protected void initialize(Application app) {
@@ -118,13 +126,12 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
                 if (isPressed && mouseCaptured) interactRequested = true;
             }
 
-            case "Inventory" -> {}
-                if (name.equals("Inventory") && isPressed) {
-                    showInventoryRequested = true;
+            // Inventário
+            case "Inventory" -> {
+                if (isPressed) showInventoryRequested = true;
             }
         }
     }
-
     @Override
     public void onAnalog(String name, float value, float tpf) {
         if (!mouseCaptured) return;
@@ -195,4 +202,14 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
     public boolean isMouseCaptured() {
         return mouseCaptured;
     }
+
+
+    // Inventário
+    public boolean consumeShowInventoryRequested() {
+        boolean r = showInventoryRequested;
+        showInventoryRequested = false;
+        return r;
+    }
+
+
 }

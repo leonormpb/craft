@@ -60,7 +60,8 @@ public class PlayerAppState extends BaseAppState {
         rootNode.attachChild(playerNode);
 
         // Engine-neutral player entity (no engine visuals here)
-        player = new Player();
+        // Cria o jogador com nome "Steve" na posição 0, 10, 0
+        player = new Player("Steve", 0, 10, 0);
 
         // BetterCharacterControl(radius, height, mass)
         characterControl = new BetterCharacterControl(0.42f, 1.8f, 80f);
@@ -132,6 +133,14 @@ public class PlayerAppState extends BaseAppState {
 
         // update light to follow head
         if (playerLight != null) playerLight.setPosition(playerNode.getWorldTranslation().add(0, eyeHeight, 0));
+
+        // Inventário: se o InputAppState pediu, abrir/fechar HUD
+        if (input.consumeShowInventoryRequested()) {
+            HudAppState hud = getStateManager().getState(HudAppState.class);
+            if (hud != null) {
+                hud.toggleInventory(player.getInventory());
+            }
+        }
     }
 
     private void respawn() {
