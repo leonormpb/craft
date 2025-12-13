@@ -9,6 +9,7 @@ import com.jme3.math.ColorRGBA;
 import com.jme3.scene.Geometry;
 import com.jme3.scene.Node;
 import com.jme3.scene.shape.Quad;
+
 import jogo.gameobject.item.Item;
 
 public class CraftingView {
@@ -17,27 +18,24 @@ public class CraftingView {
     private final Node windowNode;
     private BitmapFont font;
 
-    // Configurações 2x2 + Resultado
-    private static final int GRID_COLS = 2;
-    private static final int GRID_ROWS = 2;
     private static final float SLOT_SIZE = 62f;
-    private static final float PADDING = 10f; // Aumentar padding para espaço de resultado
+    private static final float PADDING = 10f;
 
-    // Referências para manipulação (Modelo: Arrays/Coleções)
     private Node[][] inputSlotParents; // 2x2
-    private Node resultSlotParent;     // 1 slot
-    private Geometry craftButton;      // Botão para o HudAppState interagir
+    private Node resultSlotParent;
+    private Geometry craftButton;
+    private BitmapText resultTooltip; // Nome do item resultado
 
-    // Cores (Reutilizar as da InventoryView para consistência visual)
-    private static final ColorRGBA BG_COLOR = new ColorRGBA(0.847f, 0.302f, 0.471f, 0.8f);
+    // Cores
+    private static final ColorRGBA BG_COLOR = new ColorRGBA(0.847f, 0.302f, 0.471f, 0.9f);
     private static final ColorRGBA SLOT_COLOR = new ColorRGBA(0.55f, 0.55f, 0.55f, 1.0f);
-    private static final ColorRGBA RESULT_SLOT_COLOR = new ColorRGBA(0.9f, 0.9f, 0.9f, 1.0f); // Cinzento claro para resultado
+    private static final ColorRGBA RESULT_SLOT_COLOR = new ColorRGBA(0.3f, 0.3f, 0.3f, 1.0f); // CINZENTO ESCURO
+    private static final ColorRGBA BUTTON_COLOR = new ColorRGBA(0.75f, 0.25f, 0.45f, 1.0f);
 
     public CraftingView(AssetManager assetManager) {
         this.assetManager = assetManager;
         this.windowNode = new Node("CraftingView");
-        this.inputSlotParents = new Node[GRID_ROWS][GRID_COLS];
-
+        this.inputSlotParents = new Node[2][2];
         initializeResources();
         buildLayout();
     }
@@ -50,22 +48,19 @@ public class CraftingView {
         return windowNode;
     }
 
-    // Permite ao HudAppState saber onde o botão de craft está
     public Geometry getCraftButtonGeometry() {
         return craftButton;
     }
 
     private void buildLayout() {
+        float gridWidth = 2 * SLOT_SIZE + PADDING;
+        float resultOffset = SLOT_SIZE + 4 * PADDING;
+        float totalContentWidth = gridWidth + resultOffset + SLOT_SIZE; // Largura total do conteúdo (grid + seta + resultado)
 
-        // --- CÁLCULO DE DIMENSÕES ---
-        float gridWidth = GRID_COLS * SLOT_SIZE + (GRID_COLS - 1) * PADDING;
-        float resultOffset = SLOT_SIZE + 4 * PADDING; // Espaço extra para o slot de resultado
+        float bgWidth = totalContentWidth + 40f; // Adicionar margem
+        float bgHeight = 2 * SLOT_SIZE + PADDING + 100f; // Mais espaço para o botão
 
-        // Largura total: Grelha + Espaço + Slot Resultado
-        float bgWidth = gridWidth + resultOffset;
-        float bgHeight = GRID_ROWS * SLOT_SIZE + (GRID_ROWS - 1) * PADDING + 40f; // Altura base
-
-        // --- 1. FUNDO (Layout da InventoryView) ---
+        // --- 1. FUNDO CENTRALIZADO ---
         Quad bgMesh = new Quad(bgWidth, bgHeight);
         Geometry bgGeo = new Geometry("CraftingBackground", bgMesh);
         Material bgMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
@@ -75,13 +70,12 @@ public class CraftingView {
         bgGeo.setLocalTranslation(-bgWidth / 2f, -bgHeight / 2f, -1);
         windowNode.attachChild(bgGeo);
 
-        // --- 2. GRELHA 2x2 (Input) ---
-        float gridStartX = -bgWidth / 2f + PADDING;
-        float gridStartY = -bgHeight / 2f + 10f; // 10px margem inferior
+        // --- 2. GRELHA 2x2 (CENTRALIZADA) ---
+        float gridStartX = -totalContentWidth / 2f;
+        float gridStartY = bgHeight / 2f - 50f; // Espaço do topo
 
-        for (int row = 0; row < GRID_ROWS; row++) {
-            for (int col = 0; col < GRID_COLS; col++) {
-                // Fundo do Slot
+        for (int row = 0; row < 2; row++) {
+            for (int col = 0; col < 2; col++) {
                 Quad slotQuad = new Quad(SLOT_SIZE, SLOT_SIZE);
                 Geometry slotGeo = new Geometry("InputSlot", slotQuad);
                 Material slotMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
@@ -89,11 +83,10 @@ public class CraftingView {
                 slotGeo.setMaterial(slotMat);
 
                 float x = gridStartX + col * (SLOT_SIZE + PADDING);
-                float y = gridStartY + row * (SLOT_SIZE + PADDING);
-                slotGeo.setLocalTranslation(x, y, 0);
+                float y = gridStartY - row * (SLOT_SIZE + PADDING);
+                slotGeo.setLocalTranslation(x, y, 1);
                 windowNode.attachChild(slotGeo);
 
-                // Node contentor para o ícone
                 Node iconParent = new Node("InputIconParent");
                 iconParent.setLocalTranslation(x + SLOT_SIZE / 2f, y + SLOT_SIZE / 2f, 2);
                 windowNode.attachChild(iconParent);
@@ -101,57 +94,107 @@ public class CraftingView {
             }
         }
 
-        // --- 3. SLOT DE RESULTADO (Único, maior) ---
-        float resultX = gridStartX + gridWidth + PADDING * 2;
-        float resultY = gridStartY + (bgHeight - 40f) / 2f - SLOT_SIZE / 2f; // Centrado verticalmente
+        // --- 3. SETA → ---
+        BitmapText arrow = new BitmapText(font, false);
+        arrow.setText("→");
+        arrow.setColor(ColorRGBA.White);
+        arrow.setSize(font.getCharSet().getRenderedSize() * 1.5f);
+        float arrowX = gridStartX + 2 * SLOT_SIZE + 2 * PADDING + 5f;
+        arrow.setLocalTranslation(arrowX, gridStartY - SLOT_SIZE / 2f, 1);
+        windowNode.attachChild(arrow);
+
+        // --- 4. SLOT RESULTADO ---
+        float resultX = arrowX + 35f;
+        float resultY = gridStartY - SLOT_SIZE / 2f;
 
         Quad resultQuad = new Quad(SLOT_SIZE, SLOT_SIZE);
         Geometry resultGeo = new Geometry("ResultSlot", resultQuad);
         Material resultMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
         resultMat.setColor("Color", RESULT_SLOT_COLOR);
         resultGeo.setMaterial(resultMat);
-        resultGeo.setLocalTranslation(resultX, resultY, 0);
+        resultGeo.setLocalTranslation(resultX, resultY, 1);
         windowNode.attachChild(resultGeo);
 
-        // Node contentor para o ícone do resultado
         resultSlotParent = new Node("ResultIconParent");
         resultSlotParent.setLocalTranslation(resultX + SLOT_SIZE / 2f, resultY + SLOT_SIZE / 2f, 2);
         windowNode.attachChild(resultSlotParent);
 
-        // Adicionar uma seta (opcional)
-        // ...
+        // Tooltip do resultado
+        resultTooltip = new BitmapText(font, false);
+        resultTooltip.setColor(ColorRGBA.White);
+        resultTooltip.setSize(font.getCharSet().getRenderedSize() * 0.7f);
+        resultTooltip.setLocalTranslation(resultX + SLOT_SIZE / 2f, resultY + SLOT_SIZE + 5f, 3);
+        windowNode.attachChild(resultTooltip);
 
-        // --- 4. BOTÃO "CRAFT" (DO SLOT DE RESULTADO) ---
-        // Este botão é para efetivar o craft (separado do botão da InventoryView)
-        float btnWidth = SLOT_SIZE + 10f;
-        float btnHeight = 30f;
-        float btnX = resultX - 5f;
-        float btnY = gridStartY + 5f; // Perto do canto inferior do grid
+        // --- 5. BOTÃO CRAFT (ABAIXO DO SLOT DE RESULTADO) ---
+        float btnWidth = SLOT_SIZE;
+        float btnHeight = 32f;
+        float btnX = resultX; // Alinhado com o slot de resultado
+        float btnY = resultY - btnHeight - 15f; // Abaixo do slot de resultado com espaçamento
 
         Quad craftBtnMesh = new Quad(btnWidth, btnHeight);
-        craftButton = new Geometry("CraftAction", craftBtnMesh); // Salvamos a referência
+        craftButton = new Geometry("CraftAction", craftBtnMesh);
         Material craftBtnMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        craftBtnMat.setColor("Color", new ColorRGBA(0f, 0.7f, 0f, 1f)); // Verde
+        craftBtnMat.setColor("Color", BUTTON_COLOR);
         craftButton.setMaterial(craftBtnMat);
         craftButton.setLocalTranslation(btnX, btnY, 1);
+        craftButton.setUserData("clickable", true);
         windowNode.attachChild(craftButton);
 
         BitmapText btnText = new BitmapText(font, false);
         btnText.setText("CRAFT");
         btnText.setColor(ColorRGBA.White);
-        btnText.setSize(font.getCharSet().getRenderedSize() * 0.8f);
-        btnText.setLocalTranslation(btnX + (btnWidth - btnText.getLineWidth()) / 2f, btnY + 20f, 2);
+        btnText.setSize(font.getCharSet().getRenderedSize() * 0.85f);
+        btnText.setLocalTranslation(btnX + (btnWidth - btnText.getLineWidth()) / 2f, btnY + 21f, 2);
         windowNode.attachChild(btnText);
     }
 
-    // NOVO MÉTODO (Será chamado pelo HudAppState para atualizar a View)
+
+    /**
+     * Atualiza resultado.
+     */
     public void updateResult(Item resultItem) {
-        // Lógica de polimorfismo: o item sabe como se desenhar
         resultSlotParent.detachAllChildren();
+        resultTooltip.setText("");
+
         if (resultItem != null) {
             Geometry iconGeo = resultItem.getIconGeometry(assetManager);
             resultSlotParent.attachChild(iconGeo);
-            // Aqui adicionarias a contagem, se fosse > 1
+
+            // Quantidade
+            if (resultItem.getQuantity() > 1) {
+                BitmapText qtyText = new BitmapText(font, false);
+                qtyText.setText("x" + resultItem.getQuantity());
+                qtyText.setColor(ColorRGBA.White);
+                qtyText.setSize(font.getCharSet().getRenderedSize() * 0.8f);
+                qtyText.setLocalTranslation(20f, -20f, 3);
+                resultSlotParent.attachChild(qtyText);
+            }
+
+            // Nome do item
+            resultTooltip.setText(resultItem.getName());
+            float textWidth = resultTooltip.getLineWidth();
+            resultTooltip.setLocalTranslation(
+                    resultTooltip.getLocalTranslation().x - textWidth / 2f,
+                    resultTooltip.getLocalTranslation().y,
+                    resultTooltip.getLocalTranslation().z
+            );
         }
+    }
+
+    /**
+     * Retorna a largura total da janela de crafting.
+     */
+    public float getWidth() {
+        float gridWidth = 2 * SLOT_SIZE + PADDING;
+        float resultOffset = SLOT_SIZE + 4 * PADDING;
+        return gridWidth + resultOffset + 20f;
+    }
+
+    /**
+     * Retorna a altura total da janela de crafting.
+     */
+    public float getHeight() {
+        return 2 * SLOT_SIZE + PADDING + 80f;
     }
 }

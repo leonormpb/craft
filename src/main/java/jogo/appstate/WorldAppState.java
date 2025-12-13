@@ -12,12 +12,13 @@ import com.jme3.math.Vector3f;
 import com.jme3.renderer.Camera;
 import com.jme3.scene.Node;
 import jogo.gameobject.GameObject;
-import jogo.gameobject.character.Ally;
-import jogo.gameobject.character.Player;
 import jogo.voxel.VoxelWorld;
+import jogo.gameobject.item.Item;
+import jogo.gameobject.item.ItemFactory;
 
-import java.util.ArrayList;
-import java.util.List;
+
+import jogo.gameobject.character.npc.ally.Ally;
+import jogo.gameobject.character.Player;
 
 public class WorldAppState extends BaseAppState {
 
@@ -33,16 +34,12 @@ public class WorldAppState extends BaseAppState {
     private VoxelWorld voxelWorld;
     private com.jme3.math.Vector3f spawnPosition;
 
-    // ✅ ADICIONADO: Lista de objetos do mundo (GameObjects)
-    private List<GameObject> worldObjects;
-
     public WorldAppState(Node rootNode, AssetManager assetManager, PhysicsSpace physicsSpace, Camera cam, InputAppState input) {
         this.rootNode = rootNode;
         this.assetManager = assetManager;
         this.physicsSpace = physicsSpace;
         this.cam = cam;
         this.input = input;
-        this.worldObjects = new ArrayList<>();  // ✅ Inicializar a lista
     }
 
     public void registerPlayerAppState(PlayerAppState playerAppState) {
@@ -56,20 +53,21 @@ public class WorldAppState extends BaseAppState {
 
         // Lighting
         AmbientLight ambient = new AmbientLight();
-        ambient.setColor(ColorRGBA.White.mult(0.20f));
+        ambient.setColor(ColorRGBA.White.mult(0.20f)); // slightly increased ambient
         worldNode.addLight(ambient);
 
         DirectionalLight sun = new DirectionalLight();
-        sun.setDirection(new Vector3f(-0.35f, -1.3f, -0.25f).normalizeLocal());
-        sun.setColor(ColorRGBA.White.mult(0.85f));
+        sun.setDirection(new Vector3f(-0.35f, -1.3f, -0.25f).normalizeLocal()); // more top-down to reduce harsh contrast
+        sun.setColor(ColorRGBA.White.mult(0.85f)); // slightly dimmer sun
         worldNode.addLight(sun);
 
-        // Voxel world
+        // Voxel world 16x16x16 (reduced size for simplicity)
         voxelWorld = new VoxelWorld(assetManager, 320, 32, 320);
         voxelWorld.generateLayers();
         voxelWorld.buildMeshes();
         voxelWorld.clearAllDirtyFlags();
-        voxelWorld.renderFlowers();
+
+        voxelWorld.renderFlowers();  // ✅ ADICIONA ISTO - Renderiza as flores DEPOIS
 
         worldNode.attachChild(voxelWorld.getNode());
         voxelWorld.buildPhysics(physicsSpace);
@@ -88,27 +86,94 @@ public class WorldAppState extends BaseAppState {
 
     @Override
     public void update(float tpf) {
+        // Partir blocos
         if (input != null && input.isMouseCaptured() && input.consumeBreakRequested()) {
             var pick = voxelWorld.pickFirstSolid(cam, 6f);
             pick.ifPresent(hit -> {
                 VoxelWorld.Vector3i cell = hit.cell;
+
+                // Obter tipo do bloco ANTES de partir
+                int blockId = voxelWorld.getBlock(cell.x, cell.y, cell.z);
+
+                // Partir o bloco
                 if (voxelWorld.breakAt(cell.x, cell.y, cell.z)) {
                     voxelWorld.rebuildDirtyChunks(physicsSpace);
                     playerAppState.refreshPhysics();
+
+                    // Criar item e adicionar ao inventário
+                    addItemToPlayerInventory(blockId);
                 }
             });
         }
+
+        // Abrir/fechar inventário
+        if (input != null && input.consumeShowInventoryRequested()) {
+            HudAppState hudState = getState(HudAppState.class);
+            if (hudState != null) {
+                hudState.toggleInventory();
+            }
+        }
+
+        // Toggle shading
         if (input != null && input.consumeToggleShadingRequested()) {
             voxelWorld.toggleRenderDebug();
         }
 
-        // ✅ Atualizar IA dos aliados
-        updateAlliesAI(tpf);
+        // Atualizar IA dos aliados (já existe no teu código)
+         // updateAlliesAI(tpf);
     }
+
+    /**
+     * Atualiza a IA de todos os aliados no mundo.
+     */
+
+
+    /**
+     * Adiciona item ao inventário do jogador quando bloco é partido.
+     * @param blockId ID do bloco que foi partido
+     */
+    private void addItemToPlayerInventory(int blockId) {
+        if (blockId == 0) {
+            return; // Air não dropa nada
+        }
+
+        // Criar item baseado no bloco
+        jogo.gameobject.item.Item droppedItem = jogo.gameobject.item.ItemFactory.createFromBlockId(blockId, 1);
+
+        if (droppedItem != null) {
+            // Obter player
+            Player player = getPlayerFromAppState();
+
+            if (player != null) {
+                // Adicionar ao inventário
+                boolean added = player.getInventory().addItem(droppedItem);
+
+                if (added) {
+                    System.out.println("✓ Coletado: " + droppedItem.getName() + " (ID: " + blockId + ")");
+
+                    // Atualizar UI se inventário estiver aberto
+                    HudAppState hudState = getState(HudAppState.class);
+                    if (hudState != null && hudState.isInventoryVisible()) {
+                        hudState.updateInventoryView();
+                    }
+                } else {
+                    System.out.println("✗ Inventário cheio! Item perdido: " + droppedItem.getName());
+                }
+            } else {
+                System.err.println("⚠️ Player não encontrado para adicionar item");
+            }
+        }
+    }
+
+
+
+
+
 
     @Override
     protected void cleanup(Application app) {
         if (worldNode != null) {
+            // Remove all physics controls under worldNode
             worldNode.depthFirstTraversal(spatial -> {
                 RigidBodyControl rbc = spatial.getControl(RigidBodyControl.class);
                 if (rbc != null) {
@@ -122,101 +187,48 @@ public class WorldAppState extends BaseAppState {
     }
 
     @Override
-    protected void onEnable() {
-    }
+    protected void onEnable() { }
 
     @Override
-    protected void onDisable() {
-    }
+    protected void onDisable() { }
 
-    /**
-     * Adiciona um objeto ao mundo (ex: Ally, Item, etc).
-     *
-     * @param obj O GameObject a adicionar
-     */
-    public void addGameObject(GameObject obj) {
-        worldObjects.add(obj);
-    }
+    public Ally spawnAlly(Player targetPlayer) {
+        if (targetPlayer == null || voxelWorld == null) return null;
 
-    /**
-     * Remove um objeto do mundo.
-     *
-     * @param obj O GameObject a remover
-     */
-    public void removeGameObject(GameObject obj) {
-        worldObjects.remove(obj);
-    }
+        // 1. Posição Alvo (2 blocos ao lado do jogador)
+        float targetX = targetPlayer.getPosition().x + 2.0f;
+        float targetZ = targetPlayer.getPosition().z + 2.0f;
 
-    /**
-     * Atualiza a IA de todos os aliados no mundo.
-     * Chamado a cada frame a partir de update().
-     *
-     * @param tpf Tempo por frame
-     */
-    public void updateAlliesAI(float tpf) {
-        // ✅ CORRIGIDO: Acessar o Player através do PlayerAppState
-        // Como Player é private, precisamos de um getter ou acessar via reflexão
-        // Solução melhor: adicionar um getter no PlayerAppState
+        // 2. Detetar o chão (CRUCIAL PARA NÃO CAIR NO INFINITO)
+        // O cast para (int) é necessário porque o mundo é voxel (inteiros)
+        int groundY = voxelWorld.getTopSolidY((int)targetX, (int)targetZ);
 
-        Player player = getPlayerFromAppState();
-
-        if (player == null) {
-            System.err.println("[WorldAppState] Aviso: Player não disponível para IA dos aliados");
-            return;
+        float finalY;
+        if (groundY == -1) {
+            // Chunk não carregado ou buraco: usa a altura do player como fallback
+            finalY = targetPlayer.getPosition().y;
+        } else {
+            // Nasce 2 blocos acima do chão sólido
+            finalY = groundY + 2.0f;
         }
 
-        // Atualizar cada aliado
-        for (GameObject obj : worldObjects) {
-            if (obj instanceof Ally) {
-                Ally ally = (Ally) obj;
-                // Executar a estratégia passando o jogador
-                ally.executeStrategy(player, tpf);
-            }
-        }
-    }
+        // 3. Criar e posicionar
+        Ally ally = new Ally("AllyHeart", targetPlayer);
+        ally.setPosition(new jogo.framework.math.Vec3(targetX, finalY, targetZ));
 
+        System.out.println("Ally criado em: " + targetX + ", " + finalY + ", " + targetZ);
+
+        return ally;
+    }
 
     /**
-     * Spawna um aliado próximo do jogador.
-     *
-     * @param name   Nome do aliado
-     * @param health Saúde inicial
-     * @param speed  Velocidade
+     * Obtém o Player do PlayerAppState.
      */
-    public void spawnAlly(String name, float health, float speed) {
-        // Obter posição do jogador (se disponível)
-        Vector3f spawnPos = spawnPosition.clone();
-
-        // Adicionar offset aleatório
-        float offsetX = (float) (Math.random() * 4 - 2);
-        float offsetZ = (float) (Math.random() * 4 - 2);
-        spawnPos.addLocal(offsetX, 0, offsetZ);
-
-        // Criar aliado com FollowStrategy
-        jogo.gameobject.npc.AIStrategy strategy = new jogo.gameobject.npc.FollowStrategy();
-        Ally newAlly = new Ally(name, health, speed, strategy);
-
-        // Adicionar ao mundo
-        addGameObject(newAlly);
-        System.out.println("[WorldAppState] Aliado '" + name + "' spawned em: " + spawnPos);
-    }
-
     private Player getPlayerFromAppState() {
-        if (playerAppState == null) {
-            return null;
+        if (playerAppState != null) {
+            return playerAppState.getPlayer();
         }
-
-        // ✅ OPÇÃO 1: Se você adicionar um getter no PlayerAppState
-        // return playerAppState.getPlayer();
-
-        // ✅ OPÇÃO 2: Usar reflexão (sem modificar PlayerAppState)
-        try {
-            java.lang.reflect.Field playerField = PlayerAppState.class.getDeclaredField("player");
-            playerField.setAccessible(true);
-            return (Player) playerField.get(playerAppState);
-        } catch (NoSuchFieldException | IllegalAccessException e) {
-            System.err.println("[WorldAppState] Erro ao obter Player via reflexão: " + e.getMessage());
-            return null;
-        }
+        return null;
     }
+
 }

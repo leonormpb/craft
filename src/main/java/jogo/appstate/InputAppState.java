@@ -21,20 +21,21 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
     private volatile boolean toggleShadingRequested;
     private volatile boolean respawnRequested;
     private volatile boolean interactRequested;
-
-
-    // Inventário
     private volatile boolean showInventoryRequested;
+    private volatile boolean showCraftingRequested;
+
+    // Crafting
+    private volatile boolean craftTakeResultRequested; // Clicar no resultado
+    private volatile boolean leftClickRequested; // Para arrastar items
+    private volatile boolean rightClickRequested; // Para split stacks
 
     private float mouseDX, mouseDY;
     private boolean mouseCaptured = true;
 
-
-
-
     @Override
     protected void initialize(Application app) {
         var im = app.getInputManager();
+
         // Movement keys
         im.addMapping("MoveForward", new KeyTrigger(KeyInput.KEY_W));
         im.addMapping("MoveBackward", new KeyTrigger(KeyInput.KEY_S));
@@ -42,32 +43,35 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
         im.addMapping("MoveRight", new KeyTrigger(KeyInput.KEY_D));
         im.addMapping("Jump", new KeyTrigger(KeyInput.KEY_SPACE));
         im.addMapping("Sprint", new KeyTrigger(KeyInput.KEY_LSHIFT));
+
         // Mouse look
         im.addMapping("MouseX+", new MouseAxisTrigger(MouseInput.AXIS_X, false));
         im.addMapping("MouseX-", new MouseAxisTrigger(MouseInput.AXIS_X, true));
         im.addMapping("MouseY+", new MouseAxisTrigger(MouseInput.AXIS_Y, false));
         im.addMapping("MouseY-", new MouseAxisTrigger(MouseInput.AXIS_Y, true));
-        // Toggle capture (use TAB, ESC exits app by default)
+
+        // Toggle capture
         im.addMapping("ToggleMouse", new KeyTrigger(KeyInput.KEY_TAB));
-        // Break voxel (left mouse)
-        im.addMapping("Break", new MouseButtonTrigger(com.jme3.input.MouseInput.BUTTON_LEFT));
-        // Toggle shading (L)
+
+        // Actions
+        im.addMapping("Break", new MouseButtonTrigger(MouseInput.BUTTON_LEFT));
         im.addMapping("ToggleShading", new KeyTrigger(KeyInput.KEY_L));
-        // Respawn (R)
         im.addMapping("Respawn", new KeyTrigger(KeyInput.KEY_R));
-        // Interact (E)
         im.addMapping("Interact", new KeyTrigger(KeyInput.KEY_E));
 
-
-        // Inventário
+        // UI
         im.addMapping("Inventory", new KeyTrigger(KeyInput.KEY_I));
+        im.addMapping("Crafting", new KeyTrigger(KeyInput.KEY_C));
 
-        im.addListener(this, "MoveForward", "MoveBackward", "MoveLeft", "MoveRight", "Jump", "Sprint", "ToggleMouse", "Break", "ToggleShading", "Respawn", "Interact");
+        // Crafting interactions (mouse clicks quando UI aberta)
+        im.addMapping("LeftClick", new MouseButtonTrigger(MouseInput.BUTTON_LEFT));
+        im.addMapping("RightClick", new MouseButtonTrigger(MouseInput.BUTTON_RIGHT));
+
+        im.addListener(this, "MoveForward", "MoveBackward", "MoveLeft", "MoveRight",
+                "Jump", "Sprint", "ToggleMouse", "Break", "ToggleShading",
+                "Respawn", "Interact", "Inventory", "Crafting",
+                "LeftClick", "RightClick");
         im.addListener(this, "MouseX+", "MouseX-", "MouseY+", "MouseY-");
-
-        // Inventário
-        im.addListener(this, "Inventory");
-
     }
 
     @Override
@@ -88,6 +92,10 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
         im.deleteMapping("ToggleShading");
         im.deleteMapping("Respawn");
         im.deleteMapping("Interact");
+        im.deleteMapping("Inventory");
+        im.deleteMapping("Crafting");
+        im.deleteMapping("LeftClick");
+        im.deleteMapping("RightClick");
         im.removeListener(this);
     }
 
@@ -125,13 +133,21 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
             case "Interact" -> {
                 if (isPressed && mouseCaptured) interactRequested = true;
             }
-
-            // Inventário
             case "Inventory" -> {
                 if (isPressed) showInventoryRequested = true;
             }
+            case "Crafting" -> {
+                if (isPressed) showCraftingRequested = true;
+            }
+            case "LeftClick" -> {
+                if (isPressed && !mouseCaptured) leftClickRequested = true;
+            }
+            case "RightClick" -> {
+                if (isPressed && !mouseCaptured) rightClickRequested = true;
+            }
         }
     }
+
     @Override
     public void onAnalog(String name, float value, float tpf) {
         if (!mouseCaptured) return;
@@ -146,7 +162,7 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
     public Vector3f getMovementXZ() {
         float fb = (forward ? 1f : 0f) + (backward ? -1f : 0f);
         float lr = (right ? 1f : 0f) + (left ? -1f : 0f);
-        return new Vector3f(lr, 0f, -fb); // -fb so forward maps to -Z in JME default
+        return new Vector3f(lr, 0f, -fb);
     }
 
     public boolean isSprinting() {
@@ -183,6 +199,30 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
         return r;
     }
 
+    public boolean consumeShowInventoryRequested() {
+        boolean r = showInventoryRequested;
+        showInventoryRequested = false;
+        return r;
+    }
+
+    public boolean consumeShowCraftingRequested() {
+        boolean r = showCraftingRequested;
+        showCraftingRequested = false;
+        return r;
+    }
+
+    public boolean consumeLeftClickRequested() {
+        boolean r = leftClickRequested;
+        leftClickRequested = false;
+        return r;
+    }
+
+    public boolean consumeRightClickRequested() {
+        boolean r = rightClickRequested;
+        rightClickRequested = false;
+        return r;
+    }
+
     public Vector2f consumeMouseDelta() {
         Vector2f d = new Vector2f(mouseDX, mouseDY);
         mouseDX = 0f;
@@ -190,11 +230,18 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
         return d;
     }
 
+    /**
+     * Retorna posição atual do mouse (para UI).
+     */
+    public Vector2f getMousePosition() {
+        var im = getApplication().getInputManager();
+        return im.getCursorPosition().clone();
+    }
+
     public void setMouseCaptured(boolean captured) {
         this.mouseCaptured = captured;
         var im = getApplication().getInputManager();
         im.setCursorVisible(!captured);
-        // Clear accumulated deltas when switching state
         mouseDX = 0f;
         mouseDY = 0f;
     }
@@ -202,14 +249,4 @@ public class InputAppState extends BaseAppState implements ActionListener, Analo
     public boolean isMouseCaptured() {
         return mouseCaptured;
     }
-
-
-    // Inventário
-    public boolean consumeShowInventoryRequested() {
-        boolean r = showInventoryRequested;
-        showInventoryRequested = false;
-        return r;
-    }
-
-
 }

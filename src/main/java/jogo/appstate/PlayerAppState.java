@@ -12,6 +12,7 @@ import com.jme3.math.Vector3f;
 import com.jme3.renderer.Camera;
 import com.jme3.scene.Node;
 import jogo.gameobject.character.Player;
+import jogo.appstate.InputAppState;
 
 public class PlayerAppState extends BaseAppState {
 
@@ -138,7 +139,24 @@ public class PlayerAppState extends BaseAppState {
         if (input.consumeShowInventoryRequested()) {
             HudAppState hud = getStateManager().getState(HudAppState.class);
             if (hud != null) {
-                hud.toggleInventory(player.getInventory());
+                hud.toggleInventory();
+            }
+        }
+
+        // Crafting
+        if (input.consumeLeftClickRequested()) {
+            HudAppState hud = getStateManager().getState(HudAppState.class);
+            if (hud != null && hud.isInventoryVisible()) {
+                Vector2f mousePos = input.getMousePosition();
+                hud.handleLeftClick(mousePos);
+            }
+        }
+
+        // Crafting: se o InputAppState pediu, abrir/fechar Crafting
+        if (input.consumeShowCraftingRequested()) {
+            HudAppState hud = getStateManager().getState(HudAppState.class);
+            if (hud != null) {
+                hud.toggleCrafting();
             }
         }
     }
@@ -195,5 +213,9 @@ public class PlayerAppState extends BaseAppState {
             physicsSpace.remove(characterControl);
             physicsSpace.add(characterControl);
         }
+    }
+
+    public jogo.gameobject.character.Player getPlayer() {
+        return this.player;
     }
 }

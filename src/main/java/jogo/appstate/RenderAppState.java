@@ -16,14 +16,13 @@ import jogo.engine.RenderIndex;
 import jogo.framework.math.Vec3;
 import jogo.gameobject.GameObject;
 import jogo.gameobject.character.Player;
+import jogo.gameobject.character.npc.ally.Ally;
 import jogo.gameobject.item.Item;
-import jogo.gameobject.character.Ally;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-
 
 public class RenderAppState extends BaseAppState {
 
@@ -84,7 +83,6 @@ public class RenderAppState extends BaseAppState {
     }
 
     private Spatial createSpatialFor(GameObject obj) {
-        //TODO This could be set inside each GameObject!
         if (obj instanceof Player) {
             Geometry g = new Geometry(obj.getName(), new Cylinder(16, 16, 0.35f, 1.4f, true));
             g.setMaterial(colored(ColorRGBA.Green));
@@ -93,124 +91,88 @@ public class RenderAppState extends BaseAppState {
             Geometry g = new Geometry(obj.getName(), new Box(0.3f, 0.3f, 0.3f));
             g.setMaterial(colored(ColorRGBA.Yellow));
             return g;
-
-        } else if (obj instanceof Ally) {
-            Ally ally = (Ally) obj;
-
-            // Criar o Node do coração 3D (voxels cor-de-rosa)
-            Node allyNode = createHeartMesh();
-
-            // Posicionar o Node na posição do aliado
-            allyNode.setLocalTranslation(ally.getPosition().x, ally.getPosition().y, ally.getPosition().z);
-
-            // Opcional: adicionar a posição no índice (se usarem RenderIndex)
-            // renderIndex.put(ally, allyNode);
-
-            return allyNode;
         }
+        // --- ADICIONA ESTE BLOCO ---
+        else if (obj instanceof Ally) {
+            return createHeartVisual(obj.getName());
+        }
+        // ---------------------------
         return null;
-        }
+    }
 
+    // 2. ADICIONAR ESTE MÉTODO NOVO NA CLASSE
+    private Spatial createHeartVisual(String name) {
+        Node heartNode = new Node(name);
+        float size = 0.15f; // Tamanho de cada "pixel" (voxel) do coração
 
-        private Material colored (ColorRGBA color){
-            Material m = new Material(assetManager, "Common/MatDefs/Light/Lighting.j3md");
-            m.setBoolean("UseMaterialColors", true);
-            m.setColor("Diffuse", color.clone());
-            m.setColor("Specular", ColorRGBA.White.mult(0.1f));
-            m.setFloat("Shininess", 8f);
-            return m;
-        }
+        // Material cor-de-rosa (#ff69b4 é HotPink)
+        // Convertendo hex para RGB aproximado: R=1.0, G=0.41, B=0.71
+        Material pinkMat = colored(new ColorRGBA(1.0f, 0.41f, 0.71f, 1.0f));
 
-        @Override
-        protected void cleanup (Application app){
-            if (gameNode != null) {
-                gameNode.removeFromParent();
-                gameNode = null;
-            }
-            instances.clear();
-        }
+        // Mapa de bits simples para um coração 5x5 (1 = cubo, 0 = vazio)
+        // Desenhando de cima para baixo
+        int[][] shape = {
+                {1, 0, 1}, // Topo (as duas bossas)
+                {1, 1, 1}, // Meio superior
+                {1, 1, 1}, // Meio
+                {0, 1, 0}  // Ponta
+        };
 
-        @Override
-        protected void onEnable () {
-        }
+        // Vamos expandir um pouco para ficar mais bonito (estilo 7x6)
+        int[][] pixelArt = {
+                {0, 1, 1, 0, 1, 1, 0},
+                {1, 1, 1, 1, 1, 1, 1},
+                {1, 1, 1, 1, 1, 1, 1},
+                {0, 1, 1, 1, 1, 1, 0},
+                {0, 0, 1, 1, 1, 0, 0},
+                {0, 0, 0, 1, 0, 0, 0}
+        };
 
-        @Override
-        protected void onDisable () {
-        }
+        // Iterar sobre a matriz e criar cubos
+        for (int y = 0; y < pixelArt.length; y++) {
+            for (int x = 0; x < pixelArt[y].length; x++) {
+                if (pixelArt[y][x] == 1) {
+                    Geometry box = new Geometry("pixel", new Box(size, size, size));
+                    box.setMaterial(pinkMat);
 
+                    // Calcular posição relativa:
+                    // Inverter Y para desenhar de cima para baixo corretamente
+                    // Centralizar X (subtrair metade da largura)
+                    float xPos = (x - 3) * (size * 2);
+                    float yPos = (3 - y) * (size * 2);
 
-        /**
-         * Cria um coração 3D feito de voxels (cubos pequenos cor-de-rosa #ff69b4).
-         *
-         * O coração é composto por pequenas geometrias cúbicas posicionadas
-         * para formar a silhueta de um coração flutuante.
-         *
-         * Abordagem:
-         * 1. Criar um Node pai (contentor do coração)
-         * 2. Para cada posição da "forma" do coração, adicionar um pequeno cubo
-         * 3. Usar coordenadas relativas para composição modular
-         * 4. Aplicar a cor cor-de-rosa (#ff69b4) a todos os cubos
-         *
-         * @return Node contendo o coração 3D
-         */
-        private Node createHeartMesh () {
-            Node heartNode = new Node("Heart");
-
-            // Tamanho de cada cubo pequeno (voxel)
-            float voxelSize = 0.2f;
-
-            // Cor cor-de-rosa (#ff69b4 = RGB(255, 105, 180))
-            ColorRGBA heartColor = new ColorRGBA(1.0f, 0.412f, 0.706f, 1.0f); // #ff69b4
-
-            // Matriz que define a forma do coração
-            // true = há um cubo; false = espaço vazio
-            boolean[][] heartShape = {
-                    {false, true, true, false, false, true, true, false},
-                    {true, true, true, true, true, true, true, true},
-                    {true, true, true, true, true, true, true, true},
-                    {true, true, true, true, true, true, true, true},
-                    {false, true, true, true, true, true, true, false},
-                    {false, false, true, true, true, true, false, false},
-                    {false, false, false, true, true, false, false, false},
-                    {false, false, false, false, true, false, false, false}
-            };
-
-            // Iterar sobre a matriz e criar cubos
-            for (int y = 0; y < heartShape.length; y++) {
-                for (int x = 0; x < heartShape[y].length; x++) {
-                    if (heartShape[y][x]) {
-                        // Criar um cubo nesta posição
-                        Geometry voxelGeometry = createVoxel(voxelSize, heartColor);
-
-                        // Posicionar o cubo relativamente ao coração
-                        // Centrar o coração em (0, 0, 0)
-                        float offsetX = (x - heartShape[y].length / 2f) * voxelSize;
-                        float offsetY = -(y - heartShape.length / 2f) * voxelSize;
-
-                        voxelGeometry.setLocalTranslation(offsetX, offsetY, 0);
-                        heartNode.attachChild(voxelGeometry);
-                    }
+                    box.setLocalTranslation(xPos, yPos + 1.0f, 0); // +1.0f para flutuar acima do chão
+                    heartNode.attachChild(box);
                 }
             }
-
-            // Flutuação opcional: rodar ligeiramente o coração
-            heartNode.rotate(0, 0.5f, 0); // Rodação em Z (30 graus)
-
-            return heartNode;
         }
 
+        // Opcional: Adicionar uma animação simples de escala ou rotação num Control,
+        // mas por agora deixamos estático conforme pedido.
+        return heartNode;
+    }
 
-        private Geometry createVoxel(float size, ColorRGBA color) {
-            // Criar a geometria: caixa (Box)
-            Box box = new Box(size / 2, size / 2, size / 2);
-            Geometry voxelGeom = new Geometry("Voxel", box);
+    private Material colored(ColorRGBA color) {
+        Material m = new Material(assetManager, "Common/MatDefs/Light/Lighting.j3md");
+        m.setBoolean("UseMaterialColors", true);
+        m.setColor("Diffuse", color.clone());
+        m.setColor("Specular", ColorRGBA.White.mult(0.1f));
+        m.setFloat("Shininess", 8f);
+        return m;
+    }
 
-            // Criar material e aplicar cor
-            Material voxelMaterial = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-            voxelMaterial.setColor("Color", color);
-            voxelGeom.setMaterial(voxelMaterial);
-
-            return voxelGeom;
+    @Override
+    protected void cleanup(Application app) {
+        if (gameNode != null) {
+            gameNode.removeFromParent();
+            gameNode = null;
         }
+        instances.clear();
+    }
 
+    @Override
+    protected void onEnable() { }
+
+    @Override
+    protected void onDisable() { }
 }

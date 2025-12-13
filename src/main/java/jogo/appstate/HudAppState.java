@@ -3,100 +3,196 @@ package jogo.appstate;
 import com.jme3.app.Application;
 import com.jme3.app.SimpleApplication;
 import com.jme3.app.state.BaseAppState;
-import com.jme3.asset.AssetManager;
-import com.jme3.font.BitmapFont;
-import com.jme3.font.BitmapText;
+import com.jme3.collision.CollisionResult;
+import com.jme3.collision.CollisionResults;
+import com.jme3.math.Ray;
+import com.jme3.math.Vector2f;
+import com.jme3.math.Vector3f;
+import com.jme3.renderer.Camera;
 import com.jme3.scene.Node;
-import jogo.gameobject.inventory.Inventory;
-import jogo.Interfaces.InventoryView; //
+
+import jogo.Interfaces.InventoryView;
 import jogo.Interfaces.CraftingView;
+import jogo.gameobject.character.Player;
+import jogo.gameobject.item.Item;
 
 public class HudAppState extends BaseAppState {
 
-    private final Node guiNode;
-    private final AssetManager assetManager;
-    private BitmapText crosshair;
-
-    // Referência para a View
+    private Node guiNode;
+    private Camera guiCam;
     private InventoryView inventoryView;
-    private boolean isInventoryVisible = false;
-
-    // Crafting view
     private CraftingView craftingView;
-    private boolean isCraftingVisible = false;
 
-    public HudAppState(Node guiNode, AssetManager assetManager) {
-        this.guiNode = guiNode;
-        this.assetManager = assetManager;
-    }
+    private boolean inventoryVisible = false;
 
     @Override
     protected void initialize(Application app) {
-        // 1. Inicializar Mira
-        initCrosshair(app);
+        this.guiNode = ((SimpleApplication) app).getGuiNode();
+        this.guiCam = app.getGuiViewPort().getCamera();
 
-        // 2. Inicializar a View do Inventário
-        inventoryView = new InventoryView(assetManager);
+        int width = app.getCamera().getWidth();
+        int height = app.getCamera().getHeight();
 
-        // 3. CraftingView
-        craftingView = new CraftingView(assetManager);
+        float baseY = height / 2f;
+
+        // === INVENTÁRIO À ESQUERDA ===
+        this.inventoryView = new InventoryView(app.getAssetManager());
+        inventoryView.getNode().setCullHint(com.jme3.scene.Spatial.CullHint.Always);
+        guiNode.attachChild(inventoryView.getNode());
+
+        // Posicionar à esquerda com margem
+        float invX = width * 0.25f;
+        inventoryView.getNode().setLocalTranslation(invX, baseY, 0);
+
+        // === CRAFTING À DIREITA ===
+        this.craftingView = new CraftingView(app.getAssetManager());
+        craftingView.getNode().setCullHint(com.jme3.scene.Spatial.CullHint.Always);
+        guiNode.attachChild(craftingView.getNode());
+
+        // Posicionar à direita (alinhado na mesma altura)
+        float craftX = width * 0.75f;
+        craftingView.getNode().setLocalTranslation(craftX, baseY, 0);
+
+        System.out.println("✓ HUD inicializado (Inventário @ " + invX + ", Crafting @ " + craftX + ", Y = " + baseY + ")");
     }
 
-    public void toggleInventory(Inventory playerInv) {
-        isInventoryVisible = !isInventoryVisible;
 
-        // Obtemos a referência para a aplicação de forma correta
-        SimpleApplication sapp = (SimpleApplication) getApplication();
+    public void toggleInventory() {
+        inventoryVisible = !inventoryVisible;
 
-        if (isInventoryVisible) {
-            // Atualizar dados antes de mostrar
-            inventoryView.updateData(playerInv);
-
-            // Posicionar no centro do ecrã atual
-            float x = sapp.getCamera().getWidth() / 2f;
-            float y = sapp.getCamera().getHeight() / 2f;
-            inventoryView.getNode().setLocalTranslation(x, y, 0);
-
-            guiNode.attachChild(inventoryView.getNode());
-
-            // CORREÇÃO: Usar getApplication() em vez de 'app'
-            getApplication().getInputManager().setCursorVisible(true);
-
-            // Opcional: Esconder mira
-            guiNode.detachChild(crosshair);
-
+        if (inventoryVisible) {
+            showUI();
         } else {
-            guiNode.detachChild(inventoryView.getNode());
-
-            // CORREÇÃO: Usar getApplication() em vez de 'app'
-            getApplication().getInputManager().setCursorVisible(false);
-
-            // Mostrar mira novamente
-            guiNode.attachChild(crosshair);
+            hideUI();
         }
     }
 
-    private void initCrosshair(Application app) {
-        BitmapFont font = assetManager.loadFont("Interface/Fonts/Default.fnt");
-        crosshair = new BitmapText(font, false);
-        crosshair.setText("+");
-        crosshair.setSize(font.getCharSet().getRenderedSize() * 2f);
-
-        SimpleApplication sapp = (SimpleApplication) app;
-        float x = (sapp.getCamera().getWidth() - crosshair.getLineWidth()) / 2f;
-        float y = (sapp.getCamera().getHeight() + crosshair.getLineHeight()) / 2f;
-        crosshair.setLocalTranslation(x, y, 0);
-
-        guiNode.attachChild(crosshair);
+    public void toggleCrafting() {
+        toggleInventory();
     }
 
-    @Override public void update(float tpf) { }
+    private void showUI() {
+        inventoryView.getNode().setCullHint(com.jme3.scene.Spatial.CullHint.Never);
+        craftingView.getNode().setCullHint(com.jme3.scene.Spatial.CullHint.Never);
+
+        updateInventoryView();
+        updateCraftingView();
+
+        getApplication().getInputManager().setCursorVisible(true);
+
+        System.out.println("📦 UI aberta (Inventário + Crafting lado a lado)");
+    }
+
+    private void hideUI() {
+        inventoryView.getNode().setCullHint(com.jme3.scene.Spatial.CullHint.Always);
+        craftingView.getNode().setCullHint(com.jme3.scene.Spatial.CullHint.Always);
+
+        getApplication().getInputManager().setCursorVisible(false);
+
+        System.out.println("📦 UI fechada");
+    }
+
+    public void updateInventoryView() {
+        Player player = getPlayer();
+        if (player != null) {
+            inventoryView.updateData(player.getInventory());
+        }
+    }
+
+    public void updateCraftingView() {
+        Player player = getPlayer();
+        if (player != null) {
+            Item result = player.getCraftingGrid().getResult();
+            craftingView.updateResult(result);
+        }
+    }
+
+    /**
+     * Processa clique no botão CRAFT.
+     */
+    public void handleLeftClick(Vector2f mousePos) {
+        if (!inventoryVisible) return;
+
+        // Fazer raycast na GUI
+        Ray ray = new Ray();
+        Vector3f origin = guiCam.getWorldCoordinates(mousePos, 0f);
+        Vector3f direction = guiCam.getWorldCoordinates(mousePos, 1f).subtractLocal(origin).normalizeLocal();
+        ray.setOrigin(origin);
+        ray.setDirection(direction);
+
+        CollisionResults results = new CollisionResults();
+        craftingView.getNode().collideWith(ray, results);
+
+        if (results.size() > 0) {
+            CollisionResult closest = results.getClosestCollision();
+
+            // Verificar se clicou no botão
+            if (closest.getGeometry().equals(craftingView.getCraftButtonGeometry())) {
+                System.out.println("🖱️ Botão CRAFT clicado!");
+                executeCraft();
+            }
+        }
+    }
+
+    /**
+     * Executa o craft.
+     */
+    private void executeCraft() {
+        Player player = getPlayer();
+        if (player == null) return;
+
+        Item result = player.getCraftingGrid().getResult();
+        if (result != null) {
+            boolean added = player.getInventory().addItem(result);
+
+            if (added) {
+                player.getCraftingGrid().consumeIngredients();
+
+                updateInventoryView();
+                updateCraftingView();
+
+                System.out.println("✅ Craftado: " + result.getName() + " x" + result.getQuantity());
+            } else {
+                System.out.println("❌ Inventário cheio!");
+            }
+        } else {
+            System.out.println("❌ Receita inválida!");
+        }
+    }
+
+    private Player getPlayer() {
+        PlayerAppState playerState = getState(PlayerAppState.class);
+        return playerState != null ? playerState.getPlayer() : null;
+    }
+
+    public boolean isInventoryVisible() {
+        return inventoryVisible;
+    }
+
+    public boolean isCraftingVisible() {
+        return inventoryVisible;
+    }
+
     @Override
     protected void cleanup(Application app) {
-        guiNode.detachChild(crosshair);
-        guiNode.detachChild(inventoryView.getNode());
+        if (inventoryView != null && inventoryView.getNode() != null) {
+            guiNode.detachChild(inventoryView.getNode());
+        }
+        if (craftingView != null && craftingView.getNode() != null) {
+            guiNode.detachChild(craftingView.getNode());
+        }
     }
 
-    @Override protected void onEnable() { }
-    @Override protected void onDisable() { }
+    @Override
+    protected void onEnable() {}
+
+    @Override
+    protected void onDisable() {
+        if (inventoryVisible) {
+            hideUI();
+        }
+    }
+
+    @Override
+    public void update(float tpf) {}
 }
